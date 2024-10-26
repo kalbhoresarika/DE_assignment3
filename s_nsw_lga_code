@@ -1,0 +1,27 @@
+{{ 
+    config(
+        unique_key='lga_code',
+        alias='s_lga_code'
+    ) 
+}}
+
+with source as (
+    select * from {{ ref('b_nsw_lga_code') }}
+),
+
+cleaned as (
+    select
+        "LGA_CODE",  -- Select LGA_CODE
+        trim("LGA_NAME") as LGA_NAME  -- Trim any leading/trailing spaces from LGA_NAME
+    from source  -- Use the source table
+    where "LGA_CODE" is not null  -- Filter out records where LGA_CODE is null
+),
+
+lga_code_renamed as (
+    select distinct on ("LGA_CODE")  -- Get distinct records based on LGA_CODE
+        * 
+    from cleaned  -- Use cleaned data
+)
+
+select * from lga_code_renamed  -- Select all columns from the renamed LGA_CODE table
+
