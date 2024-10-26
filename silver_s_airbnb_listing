@@ -1,0 +1,48 @@
+
+{{ 
+    config(
+        unique_key='listing_id',
+        alias='s_airbnb_listing'
+    ) 
+}}
+
+with source as (
+    select * from {{ ref('b_airbnb_listing') }}
+),
+
+cleaned as (
+    select
+        lower(cast("LISTING_ID" as text)) as listing_id,
+        lower(cast("SCRAPE_ID" as text)) as scrape_id,
+        to_date("SCRAPED_DATE", 'YYYY-MM-DD') as scraped_date,  -- Corrected format for SCRAPED_DATE
+        lower(cast("HOST_ID" as text)) as host_id,
+        coalesce(trim("HOST_NAME"), 'Unknown') as host_name,
+        to_date("HOST_SINCE", 'DD/MM/YYYY') as host_since,  -- Corrected format for HOST_SINCE
+        "HOST_IS_SUPERHOST",
+        trim("HOST_NEIGHBOURHOOD") as host_neighbourhood,
+        trim("LISTING_NEIGHBOURHOOD") as listing_neighbourhood,
+        lower("PROPERTY_TYPE") as property_type,
+        lower("ROOM_TYPE") as room_type,
+        coalesce("ACCOMMODATES", 0) as accommodates,
+        coalesce("PRICE", 0) as price,
+        "HAS_AVAILABILITY",
+        coalesce("AVAILABILITY_30", 0) as availability_30,
+        coalesce("NUMBER_OF_REVIEWS", 0) as number_of_reviews,
+        coalesce("REVIEW_SCORES_RATING", 0) as review_scores_rating,
+        coalesce("REVIEW_SCORES_ACCURACY", 0) as review_scores_accuracy,
+        coalesce("REVIEW_SCORES_CLEANLINESS", 0) as review_scores_cleanliness,
+        coalesce("REVIEW_SCORES_CHECKIN", 0) as review_scores_checkin,
+        coalesce("REVIEW_SCORES_COMMUNICATION", 0) as review_scores_communication,
+        coalesce("REVIEW_SCORES_VALUE", 0) as review_scores_value
+    from source
+    where "LISTING_ID" is not null
+),
+
+listing_renamed as (
+    select distinct on (listing_id)
+        *
+    from cleaned
+    order by listing_id, scraped_date desc
+)
+
+select * from listing_renamed  -- Removed extra semicolon
