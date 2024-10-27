@@ -1,0 +1,85 @@
+-- models/gold/datamart/dm_listing_analysis.sql
+{{ config(materialized='view') }}
+
+WITH listing_scd AS (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (PARTITION BY listing_id ORDER BY scraped_date DESC) as rn
+    FROM {{ ref('fact_listing') }}
+),
+
+lga_suburb AS (
+    SELECT 
+        dim_lga.lga_name,
+        dim_suburb.suburb_name
+    FROM {{ ref('dim_lga') }} AS dim_lga
+    LEFT JOIN {{ ref('dim_suburb') }} AS dim_suburb ON dim_lga.lga_name = dim_suburb.lga_name
+),
+
+census_g01 AS (
+    SELECT 
+        REPLACE("LGA_CODE_2016", 'LGA', '') AS lga_code,
+        tot_p_p,
+        australian_citizen_p,
+        indigenous_p_tot_p,
+        age_0_4_yr_p + age_5_14_yr_p AS population_under_15,
+        age_15_19_yr_p + age_20_24_yr_p AS population_15_24,
+        age_25_34_yr_p + age_35_44_yr_p + age_45_54_yr_p AS population_25_54,
+        age_55_64_yr_p + age_65_74_yr_p + age_75_84_yr_p + age_85ov_p AS population_over_55
+    FROM {{ ref('ref_census_g01') }}
+),
+
+census_g02 AS (
+    SELECT 
+        REPLACE("LGA_CODE_2016", 'LGA', '') AS lga_code,
+        median_age_persons,
+        median_mortgage_repay_monthly,
+        median_tot_prsnl_inc_weekly,
+        median_rent_weekly,
+        median_tot_fam_inc_weekly,
+        average_num_psns_per_bedroom,
+        median_tot_hhd_inc_weekly,
+        average_household_size
+    FROM {{ ref('ref_census_g02') }}
+)
+
+SELECT
+    fact_listing.listing_id,
+    fact_listing.scraped_date,
+    fact_listing.host_id,
+    fact_listing.price,
+    fact_listing."HAS_AVAILABILITY",
+    fact_listing.availability_30,
+    fact_listing.number_of_reviews,
+    fact_listing.review_scores_rating,
+    fact_listing.listing_neighbourhood,
+    dim_host.host_name,
+    dim_host."HOST_IS_SUPERHOST",
+    dim_host.host_neighbourhood,
+    dim_listing.property_type,
+    dim_listing.room_type,
+    dim_listing.accommodates,
+    lga_suburb.suburb_name,
+    lga_suburb.lga_name,
+    census_g01.tot_p_p AS total_population,
+    census_g01.australian_citizen_p AS total_australian_citizens,
+    census_g01.indigenous_p_tot_p AS total_indigenous_population,
+    census_g01.population_under_15,
+    census_g01.population_15_24,
+    census_g01.population_25_54,
+    census_g01.population_over_55,
+    census_g02.median_age_persons,
+    census_g02.median_mortgage_repay_monthly,
+    census_g02.median_tot_prsnl_inc_weekly,
+    census_g02.median_rent_weekly,
+    census_g02.median_tot_fam_inc_weekly,
+    census_g02.average_num_psns_per_bedroom,
+    census_g02.median_tot_hhd_inc_weekly,
+    census_g02.average_household_size
+FROM listing_scd AS fact_listing
+LEFT JOIN {{ ref('dim_host') }} AS dim_host ON fact_listing.host_id = dim_host.host_id
+LEFT JOIN {{ ref('dim_listing') }} AS dim_listing ON fact_listing.listing_id = dim_listing.listing_id
+LEFT JOIN lga_suburb ON fact_listing.listing_neighbourhood = lga_suburb.suburb_name
+LEFT JOIN census_g01 ON lga_suburb.lga_name = census_g01.lga_code
+LEFT JOIN census_g02 ON lga_suburb.lga_name = census_g02.lga_code
+WHERE fact_listing.rn = 1  -- This ensures we're using the most recent record for each listing (SCD2)
