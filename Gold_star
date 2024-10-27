@@ -1,0 +1,70 @@
+-- models/gold/star/dim_host.sql
+{{ config(materialized='table') }}
+
+SELECT DISTINCT
+    host_id,
+    host_name,
+    host_since,
+    "HOST_IS_SUPERHOST",
+    host_neighbourhood
+FROM {{ ref('s_airbnb_listing') }}
+
+-- models/gold/star/dim_lga.sql
+{{ config(materialized='table') }}
+
+SELECT
+    "LGA_CODE",
+    lga_name
+FROM {{ ref('s_nsw_lga_code') }}
+
+-- models/gold/star/dim_listing.sql
+{{ config(materialized='table') }}
+
+SELECT
+    listing_id,
+    property_type,
+    room_type,
+    accommodates,
+    listing_neighbourhood
+FROM {{ ref('s_airbnb_listing') }}
+
+
+-- models/gold/star/dim_suburb.sql
+{{ config(materialized='table') }}
+
+SELECT DISTINCT
+    suburb_name,
+    lga_name
+FROM {{ ref('s_nsw_lga_suburb') }}
+
+
+-- models/gold/star/fact_listing.sql
+{{ config(materialized='table') }}
+
+SELECT
+    listing_id,
+    host_id,
+    scraped_date,
+    price,
+    "HAS_AVAILABILITY",
+    availability_30,
+    number_of_reviews,
+    review_scores_rating,
+    listing_neighbourhood
+FROM {{ ref('s_airbnb_listing') }}
+
+
+
+-- models/gold/star/ref_census_g01.sql
+{{ config(materialized='table') }}
+
+SELECT *
+FROM {{ ref('s_census_g01') }}
+
+
+
+-- models/gold/star/ref_census_g02.sql
+{{ config(materialized='table') }}
+
+SELECT *
+FROM {{ ref('s_census_g02') }}
