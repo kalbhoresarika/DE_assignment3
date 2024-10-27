@@ -1,0 +1,5 @@
+-- models/gold/datamart/dm_host_neighbourhood.sql
+{{ config(materialized='view') }}
+
+SELECT *
+FROM {{ ref('dm_host_neighbourhood_table') }}
