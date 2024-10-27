@@ -1,0 +1,62 @@
+-- models/gold/datamart/dm_host_neighbourhood_table.sql
+{{ config(materialized='table') }}
+
+WITH listing_data AS (
+    SELECT
+        host_neighbourhood,
+        DATE_TRUNC('month', "scraped_date") AS month_year,
+        host_id,
+        "HAS_AVAILABILITY",
+        "price",
+        "availability_30",
+        "HOST_IS_SUPERHOST"
+    FROM {{ ref('dm_listing_analysis') }}
+    WHERE "host_neighbourhood" IS NOT NULL
+),
+
+listing_data_check AS (
+    SELECT COUNT(*) as listing_data_count
+    FROM listing_data
+),
+
+host_stats AS (
+    SELECT
+        "host_neighbourhood",
+        month_year,
+        COUNT(DISTINCT host_id) AS distinct_hosts,
+        SUM(CASE WHEN "HAS_AVAILABILITY" = 't' THEN (30 - "availability_30") * price ELSE 0 END) AS "estimated_revenue",
+        COUNT(DISTINCT CASE WHEN "HOST_IS_SUPERHOST" = 't' THEN host_id END) AS superhost_count
+    FROM listing_data
+    GROUP BY "host_neighbourhood", month_year
+),
+
+host_stats_check AS (
+    SELECT COUNT(*) as host_stats_count
+    FROM host_stats
+),
+
+final_stats AS (
+    SELECT
+        "host_neighbourhood",
+        "month_year",
+        "distinct_hosts",
+        "estimated_revenue",
+        CASE
+            WHEN distinct_hosts > 0 THEN estimated_revenue / distinct_hosts
+            ELSE 0
+        END AS estimated_revenue_per_host,
+        CASE
+            WHEN distinct_hosts > 0 THEN (superhost_count::float / distinct_hosts) * 100
+            ELSE 0
+        END AS superhost_rate
+    FROM host_stats
+)
+
+SELECT 
+    l.listing_data_count,
+    h.host_stats_count,
+    f.*
+FROM final_stats f
+CROSS JOIN listing_data_check l
+CROSS JOIN host_stats_check h
+ORDER BY "host_neighbourhood", month_year
