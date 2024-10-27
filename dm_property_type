@@ -1,0 +1,83 @@
+-- models/gold/datamart/dm_property_type.sql
+{{ config(materialized='view') }}
+
+WITH listing_data AS (
+    SELECT
+        property_type,
+        room_type,
+        accommodates,
+        DATE_TRUNC('month', scraped_date) AS month_year,
+        "HAS_AVAILABILITY",
+        price,
+        host_id,
+        "HOST_IS_SUPERHOST",
+        review_scores_rating,
+        availability_30
+    FROM {{ ref('dm_listing_analysis') }}
+),
+
+listing_stats AS (
+    SELECT
+        property_type,
+        room_type,
+        accommodates,
+        month_year,
+        COUNT(*) AS total_listings,
+        COUNT(*) FILTER (WHERE "HAS_AVAILABILITY" = 't') AS active_listings,
+        MIN(price) FILTER (WHERE "HAS_AVAILABILITY" = 't') AS min_price,
+        MAX(price) FILTER (WHERE "HAS_AVAILABILITY" = 't') AS max_price,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price) FILTER (WHERE "HAS_AVAILABILITY" = 't') AS median_price,
+        AVG(price) FILTER (WHERE "HAS_AVAILABILITY" = 't') AS avg_price,
+        COUNT(DISTINCT host_id) AS distinct_hosts,
+        COUNT(DISTINCT host_id) FILTER (WHERE "HOST_IS_SUPERHOST" = 't') AS superhost_count,
+        AVG(review_scores_rating) FILTER (WHERE "HAS_AVAILABILITY" = 't') AS avg_review_score,
+        SUM(GREATEST(30 - availability_30, 0)) FILTER (WHERE "HAS_AVAILABILITY" = 't') AS total_stays,
+        AVG(GREATEST(30 - availability_30, 0) * price) FILTER (WHERE "HAS_AVAILABILITY" = 't') AS avg_estimated_revenue
+    FROM listing_data
+    GROUP BY property_type, room_type, accommodates, month_year
+),
+
+listing_changes AS (
+    SELECT
+        property_type,
+        room_type,
+        accommodates,
+        month_year,
+        active_listings,
+        LAG(active_listings) OVER (PARTITION BY property_type, room_type, accommodates ORDER BY month_year) AS prev_active_listings,
+        total_listings - active_listings AS inactive_listings,
+        LAG(total_listings - active_listings) OVER (PARTITION BY property_type, room_type, accommodates ORDER BY month_year) AS prev_inactive_listings
+    FROM listing_stats
+)
+
+SELECT
+    ls.property_type,
+    ls.room_type,
+    ls.accommodates,
+    ls.month_year,
+    (ls.active_listings::float / NULLIF(ls.total_listings, 0) * 100) AS active_listings_rate,
+    ls.min_price,
+    ls.max_price,
+    ls.median_price,
+    ls.avg_price,
+    ls.distinct_hosts,
+    (ls.superhost_count::float / NULLIF(ls.distinct_hosts, 0) * 100) AS superhost_rate,
+    ls.avg_review_score,
+    CASE
+        WHEN lc.prev_active_listings > 0 THEN
+            ((lc.active_listings::float - lc.prev_active_listings) / lc.prev_active_listings * 100)
+        ELSE NULL
+    END AS active_listings_percent_change,
+    CASE
+        WHEN lc.prev_inactive_listings > 0 THEN
+            ((lc.inactive_listings::float - lc.prev_inactive_listings) / lc.prev_inactive_listings * 100)
+        ELSE NULL
+    END AS inactive_listings_percent_change,
+    ls.total_stays,
+    ls.avg_estimated_revenue
+FROM listing_stats ls
+LEFT JOIN listing_changes lc ON ls.property_type = lc.property_type 
+                             AND ls.room_type = lc.room_type 
+                             AND ls.accommodates = lc.accommodates 
+                             AND ls.month_year = lc.month_year
+ORDER BY ls.property_type, ls.room_type, ls.accommodates, ls.month_year
