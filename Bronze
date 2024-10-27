@@ -1,0 +1,49 @@
+{{
+    config(
+        unique_key='id',
+        alias='airbnb'
+    )
+}}
+
+select * from {{ source('airbnb_census', 'airbnb_listing') }}
+
+
+{{
+    config(
+        unique_key='id',
+        alias='C_G01'
+    )
+}}
+
+select * from {{ source('airbnb_census', 'census_g01') }}
+
+
+{{
+    config(
+        unique_key='id',
+        alias='C_G02'
+    )
+}}
+
+select * from {{ source('airbnb_census', 'census_g02') }}
+
+
+{{
+    config(
+        unique_key='id',
+        alias='LGA_code'
+    )
+}}
+
+select * from {{ source('airbnb_census', 'nsw_lga_code') }}
+
+
+
+{{
+    config(
+        unique_key='id',
+        alias='LGA_suburb'
+    )
+}}
+
+select * from {{ source('airbnb_census', 'nsw_lga_suburb') }}
